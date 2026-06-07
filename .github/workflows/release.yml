@@ -1,0 +1,214 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Tag or commit to build (e.g. v0.1.0)"
+        required: true
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            artifact: google-calendar-tui-linux-x86_64
+            builder: cargo
+          - target: aarch64-unknown-linux-gnu
+            artifact: google-calendar-tui-linux-aarch64
+            builder: cross
+
+    runs-on: ubuntu-22.04
+
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Install nasm (x86_64 native build; ring assembles its primitives)
+        if: matrix.builder == 'cargo'
+        run: sudo apt-get update && sudo apt-get install -y nasm
+
+      - name: Install cross (aarch64 cross-compile via Docker)
+        if: matrix.builder == 'cross'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      - name: Test (native only — aarch64 binaries cannot run on x86 runner)
+        if: matrix.builder == 'cargo'
+        run: cargo test --release --target ${{ matrix.target }}
+
+      - name: Build release binary
+        run: ${{ matrix.builder }} build --release --target ${{ matrix.target }} --locked
+
+      - name: Create tarball
+        run: |
+          STAGE=$(mktemp -d)
+          cp target/${{ matrix.target }}/release/google-calendar-tui "$STAGE/"
+          cp LICENSE README.md "$STAGE/"
+          tar czf ${{ matrix.artifact }}.tar.gz -C "$STAGE" .
+          rm -rf "$STAGE"
+
+      - name: Compute SHA256
+        run: |
+          SHA=$(sha256sum ${{ matrix.artifact }}.tar.gz | awk '{print $1}')
+          echo "$SHA  ${{ matrix.artifact }}.tar.gz" > ${{ matrix.artifact }}.tar.gz.sha256
+          echo "Built ${{ matrix.artifact }}.tar.gz sha256=$SHA"
+
+      - uses: actions/upload-artifact@v5
+        with:
+          name: ${{ matrix.artifact }}
+          path: |
+            ${{ matrix.artifact }}.tar.gz
+            ${{ matrix.artifact }}.tar.gz.sha256
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Generate release body
+        env:
+          TAG: ${{ inputs.ref || github.ref_name }}
+        run: |
+          PREV_TAG=$(git tag --sort=-v:refname | grep -Fxv "$TAG" | head -1)
+          {
+            echo "## Install"
+            echo
+            echo "### Arch (AUR)"
+            echo
+            echo '```bash'
+            echo "yay -S google-calendar-tui-bin      # prebuilt binary from this release"
+            echo "yay -S google-calendar-tui          # compiles from source"
+            echo '```'
+            echo
+            echo "### Manual"
+            echo
+            echo '```bash'
+            echo "mkdir -p ~/.local/bin"
+            echo "curl -fsSL https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG}/google-calendar-tui-linux-x86_64.tar.gz | tar xz -C ~/.local/bin google-calendar-tui"
+            echo '```'
+            echo
+            echo "## Checksums (SHA256)"
+            echo '```'
+            cat artifacts/*.sha256
+            echo '```'
+
+            if [ -n "$PREV_TAG" ]; then
+              echo
+              echo "**Full diff**: https://github.com/${GITHUB_REPOSITORY}/compare/${PREV_TAG}...${TAG}"
+            fi
+          } > body.md
+
+      - name: Create / update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="${{ inputs.ref || github.ref_name }}"
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" artifacts/*.tar.gz artifacts/*.sha256 \
+              --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file body.md
+          else
+            gh release create "$TAG" artifacts/*.tar.gz artifacts/*.sha256 \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG" \
+              --notes-file body.md \
+              --latest
+          fi
+
+  publish-aur:
+    needs: [build, release]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v') || inputs.ref != ''
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: actions/download-artifact@v5
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Pin sha256s in PKGBUILDs
+        env:
+          TAG: ${{ inputs.ref || github.ref_name }}
+        run: |
+          SRC_URL="https://github.com/${GITHUB_REPOSITORY}/archive/refs/tags/${TAG}.tar.gz"
+          SRC_SHA=$(curl -fsSL "$SRC_URL" | sha256sum | awk '{print $1}')
+          sed -i "s/^sha256sums=.*/sha256sums=('$SRC_SHA')/" packaging/aur/PKGBUILD
+
+          X86_SHA=$(awk '{print $1}' artifacts/google-calendar-tui-linux-x86_64.tar.gz.sha256)
+          ARM_SHA=$(awk '{print $1}' artifacts/google-calendar-tui-linux-aarch64.tar.gz.sha256)
+          sed -i "s/^sha256sums_x86_64=.*/sha256sums_x86_64=('$X86_SHA')/" packaging/aur/PKGBUILD-bin
+          sed -i "s/^sha256sums_aarch64=.*/sha256sums_aarch64=('$ARM_SHA')/" packaging/aur/PKGBUILD-bin
+
+          # deploy-aur copies pkgbuild verbatim, and the -bin AUR repo needs a
+          # file literally named PKGBUILD.
+          mkdir -p staging/bin
+          cp packaging/aur/PKGBUILD-bin staging/bin/PKGBUILD
+
+      - name: Check AUR_SSH_KEY presence
+        id: aur_key
+        env:
+          AUR_SSH_KEY: ${{ secrets.AUR_SSH_KEY }}
+        run: |
+          if [ -z "$AUR_SSH_KEY" ]; then
+            echo "set=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Skipping AUR push — no AUR_SSH_KEY secret set"
+          else
+            echo "set=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish google-calendar-tui (source) to AUR
+        if: steps.aur_key.outputs.set == 'true'
+        uses: KSXGitHub/github-actions-deploy-aur@v2.7.2
+        with:
+          pkgname: google-calendar-tui
+          pkgbuild: ./packaging/aur/PKGBUILD
+          commit_username: AkitaOnRails (GitHub Actions)
+          commit_email: boss@akitaonrails.com
+          ssh_private_key: ${{ secrets.AUR_SSH_KEY }}
+          commit_message: "google-calendar-tui ${{ inputs.ref || github.ref_name }}"
+          ssh_keyscan_types: rsa,ecdsa,ed25519
+          force_push: 'false'
+
+      - name: Publish google-calendar-tui-bin to AUR
+        if: steps.aur_key.outputs.set == 'true'
+        uses: KSXGitHub/github-actions-deploy-aur@v2.7.2
+        with:
+          pkgname: google-calendar-tui-bin
+          pkgbuild: ./staging/bin/PKGBUILD
+          commit_username: AkitaOnRails (GitHub Actions)
+          commit_email: boss@akitaonrails.com
+          ssh_private_key: ${{ secrets.AUR_SSH_KEY }}
+          commit_message: "google-calendar-tui-bin ${{ inputs.ref || github.ref_name }}"
+          ssh_keyscan_types: rsa,ecdsa,ed25519
+          force_push: 'false'

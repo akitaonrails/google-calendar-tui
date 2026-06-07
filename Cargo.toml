@@ -1,0 +1,28 @@
+[package]
+name = "google-calendar-tui"
+version = "0.1.0"
+edition = "2024"
+description = "A quiet read-only terminal agenda for Google Calendar via GNOME Online Accounts"
+repository = "https://github.com/akitaonrails/google-calendar-tui"
+readme = "README.md"
+license = "MIT"
+exclude = ["packaging/*", ".github/*"]
+
+[package.metadata.binstall]
+pkg-url = "{ repo }/releases/download/v{ version }/google-calendar-tui-linux-{ target-arch }.tar.gz"
+bin-dir = "{ bin }{ binary-ext }"
+pkg-fmt = "tgz"
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", features = ["serde"] }
+clap = { version = "4", features = ["derive"] }
+crossterm = "0.28"
+ratatui = "0.29"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+serde = { version = "1", features = ["derive"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+unicode-width = "0.2"
+urlencoding = "2"
+zbus = { version = "5", default-features = false, features = ["tokio"] }
+zvariant = "5"
