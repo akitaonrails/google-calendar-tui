@@ -10,10 +10,11 @@ It fetches upcoming appointments once, prints them to stdout, and exits. It does
 - No app-specific OAuth client setup or token cache.
 - Read-only Google Calendar API access.
 - One or more GOA Google accounts.
-- Plain stdout output by default for scripting and quick shell use.
+- Colored plain stdout output by default for quick shell use; disable ANSI colors with `--no-color`.
 - Optional responsive Ratatui UI with screen-fitting `more` behavior.
 - Minimal default rows: day, time, and appointment title only.
 - Subtle category color markers in TUI mode for holidays, birthdays, travel, focus time, out-of-office, meetings, and all-day events.
+- Matching category colors in stdout mode for holidays, birthdays, travel, focus time, out-of-office, meetings, and all-day events.
 - Optional `--details` mode for duration, video, account, calendar, and location columns.
 - Fetches up to 60 days ahead by default; override with `--fetch-days`.
 - Duplicate event suppression across calendars/accounts.
@@ -89,6 +90,13 @@ Show extra source/details columns:
 cargo run -- --details
 ```
 
+Disable ANSI colors in stdout mode:
+
+```sh
+cargo run -- --no-color
+NO_COLOR=1 cargo run --
+```
+
 Use the interactive TUI with screen-fitting `more` behavior:
 
 ```sh
@@ -105,7 +113,7 @@ Inside `--tui` mode:
 
 ## Category colors
 
-In `--tui` mode, each appointment row gets a small colored marker. Titles stay mostly neutral to avoid visual noise.
+In stdout mode, appointment rows are colored by category. In `--tui` mode, each appointment row gets a small colored marker and titles stay mostly neutral to avoid visual noise.
 
 - amber: holidays
 - violet: birthdays
@@ -125,6 +133,7 @@ Holiday detection uses Google holiday calendar IDs/names plus common holiday ter
 --all-calendars            Include hidden/unselected calendars
 --details                  Show duration, Meet, account/calendar, and location columns
 --tui                      Use the interactive TUI with the `more` command
+--no-color                 Disable ANSI colors in plain stdout output
 --fetch-days DAYS          Future days fetched once at startup; default 60
 --max-results-per-calendar N
 ```

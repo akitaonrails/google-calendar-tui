@@ -6,7 +6,10 @@ use anyhow::{Context, Result};
 use calendar::CalendarEvent;
 use chrono::{Local, NaiveDate};
 use clap::Parser;
-use display::{day_label, format_duration, time_label};
+use display::{
+    colorize_day_label, colorize_details, colorize_time_label, colorize_title, day_label,
+    format_duration, stdout_colors_enabled, time_label,
+};
 
 /// Default lookahead chosen to keep startup fast while still covering near-term planning.
 const DEFAULT_FETCH_DAYS: i64 = 60;
@@ -37,6 +40,10 @@ struct Cli {
     /// Use the interactive screen-fitting TUI with the `more` command.
     #[arg(long)]
     tui: bool,
+
+    /// Disable ANSI colors in plain stdout output. Also disabled by NO_COLOR.
+    #[arg(long)]
+    no_color: bool,
 
     /// Number of future days to fetch once at startup.
     #[arg(long, default_value_t = DEFAULT_FETCH_DAYS, value_name = "DAYS")]
@@ -96,12 +103,12 @@ async fn main() -> Result<()> {
     if cli.tui {
         ui::run(events, cli.details)
     } else {
-        print_events(&events, cli.details);
+        print_events(&events, cli.details, stdout_colors_enabled(cli.no_color));
         Ok(())
     }
 }
 
-fn print_events(events: &[CalendarEvent], show_details: bool) {
+fn print_events(events: &[CalendarEvent], show_details: bool, use_color: bool) {
     if events.is_empty() {
         println!("No upcoming appointments.");
         return;
@@ -116,20 +123,29 @@ fn print_events(events: &[CalendarEvent], show_details: bool) {
             if current_day.is_some() {
                 println!();
             }
-            println!("{}", day_label(event_day, today));
+            let label = day_label(event_day, today);
+            println!(
+                "{}",
+                colorize_day_label(&label, event_day, today, use_color)
+            );
             current_day = Some(event_day);
         }
 
-        if show_details {
-            println!(
-                "  {:<7}  {}  {}",
-                time_label(event),
-                event.title,
-                details(event)
-            );
-        } else {
-            println!("  {:<7}  {}", time_label(event), event.title);
-        }
+        println!("{}", event_line(event, show_details, use_color));
+    }
+}
+
+fn event_line(event: &CalendarEvent, show_details: bool, use_color: bool) -> String {
+    let category = event.category();
+    let time = format!("{:<7}", time_label(event));
+    let time = colorize_time_label(&time, category, use_color);
+    let title = colorize_title(&event.title, category, use_color);
+
+    if show_details {
+        let details = colorize_details(&details(event), use_color);
+        format!("  {time}  {title}  {details}")
+    } else {
+        format!("  {time}  {title}")
     }
 }
 
@@ -155,4 +171,40 @@ fn details(event: &CalendarEvent) -> String {
     }
 
     parts.join(" · ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{DateTime, Local, LocalResult, TimeZone};
+
+    fn local_datetime(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> DateTime<Local> {
+        match Local.with_ymd_and_hms(year, month, day, hour, minute, 0) {
+            LocalResult::Single(datetime) => datetime,
+            LocalResult::Ambiguous(earliest, _) => earliest,
+            LocalResult::None => Local
+                .with_ymd_and_hms(year, month, day, hour + 1, minute, 0)
+                .earliest()
+                .expect("valid local datetime"),
+        }
+    }
+
+    #[test]
+    fn event_line_stays_plain_when_color_is_disabled() {
+        let mut event = calendar::test_event("Some holiday", local_datetime(2026, 12, 25, 9, 0));
+        event.all_day = true;
+
+        assert_eq!(event_line(&event, false, false), "  all-day  Some holiday");
+    }
+
+    #[test]
+    fn event_line_colors_category_when_enabled() {
+        let mut event = calendar::test_event("Some holiday", local_datetime(2026, 12, 25, 9, 0));
+        event.all_day = true;
+
+        let line = event_line(&event, false, true);
+
+        assert!(line.contains("\u{1b}[38;2;245;194;129m"));
+        assert!(line.contains("\u{1b}[1;38;2;245;194;129mSome holiday\u{1b}[0m"));
+    }
 }

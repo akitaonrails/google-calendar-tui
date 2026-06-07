@@ -19,21 +19,12 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::{
     calendar::{CalendarEvent, EventCategory},
-    display::{compact_day_label, day_label, format_duration, time_label},
+    display::{
+        ACCENT, DIM, FG, MUTED, RgbColor, TODAY, category_color, compact_day_label, day_label,
+        format_duration, time_label,
+    },
 };
 
-const FG: Color = Color::Rgb(218, 218, 218);
-const MUTED: Color = Color::Rgb(120, 126, 135);
-const DIM: Color = Color::Rgb(88, 93, 101);
-const ACCENT: Color = Color::Rgb(122, 162, 247);
-const TODAY: Color = Color::Rgb(180, 220, 140);
-const HOLIDAY: Color = Color::Rgb(245, 194, 129);
-const BIRTHDAY: Color = Color::Rgb(203, 166, 247);
-const TRAVEL: Color = Color::Rgb(137, 180, 250);
-const FOCUS: Color = Color::Rgb(166, 227, 161);
-const OUT_OF_OFFICE: Color = Color::Rgb(243, 139, 168);
-const MEETING: Color = Color::Rgb(122, 162, 247);
-const ALL_DAY: Color = Color::Rgb(186, 194, 222);
 const EVENT_POLL_INTERVAL_MS: u64 = 250;
 const MIN_BODY_WIDTH: usize = 10;
 const MIN_BODY_ROWS: usize = 2;
@@ -175,7 +166,7 @@ fn render(frame: &mut Frame<'_>, app: &mut App) {
 
     frame.render_widget(Paragraph::new(body_lines), chunks[0]);
     frame.render_widget(
-        Paragraph::new(footer_text(app, width)).style(Style::default().fg(MUTED)),
+        Paragraph::new(footer_text(app, width)).style(Style::default().fg(tui_color(MUTED))),
         chunks[1],
     );
 }
@@ -196,7 +187,7 @@ fn build_body_plan(
         return (
             vec![Line::from(Span::styled(
                 truncate_to_width("Terminal too small.", width),
-                Style::default().fg(MUTED),
+                Style::default().fg(tui_color(MUTED)),
             ))],
             PlanSummary::default(),
         );
@@ -205,13 +196,13 @@ fn build_body_plan(
     if events.is_empty() {
         let mut lines = vec![Line::from(Span::styled(
             "No upcoming appointments.",
-            Style::default().fg(FG),
+            Style::default().fg(tui_color(FG)),
         ))];
 
         if body_rows > 1 {
             lines.push(Line::from(Span::styled(
                 "Your calendar is clear.",
-                Style::default().fg(DIM),
+                Style::default().fg(tui_color(DIM)),
             )));
         }
 
@@ -257,7 +248,9 @@ fn day_header(date: NaiveDate, today: NaiveDate, width: usize) -> Line<'static> 
 
     Line::from(Span::styled(
         truncate_to_width(&label, width),
-        Style::default().fg(color).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(tui_color(color))
+            .add_modifier(Modifier::BOLD),
     ))
 }
 
@@ -296,7 +289,7 @@ fn event_line(event: &CalendarEvent, show_details: bool, width: usize) -> Line<'
     if !marker.is_empty() {
         spans.push(Span::styled(
             marker,
-            Style::default().fg(category_color(category)),
+            Style::default().fg(tui_color(category_color(category))),
         ));
     }
 
@@ -309,39 +302,34 @@ fn event_line(event: &CalendarEvent, show_details: bool, width: usize) -> Line<'
     if show_meta {
         let padding = width.saturating_sub(used + meta_width).max(1);
         spans.push(Span::raw(" ".repeat(padding)));
-        spans.push(Span::styled(meta, Style::default().fg(DIM)));
+        spans.push(Span::styled(meta, Style::default().fg(tui_color(DIM))));
     }
 
     Line::from(spans)
 }
 
-fn category_color(category: EventCategory) -> Color {
-    match category {
-        EventCategory::Holiday => HOLIDAY,
-        EventCategory::Birthday => BIRTHDAY,
-        EventCategory::Travel => TRAVEL,
-        EventCategory::Focus => FOCUS,
-        EventCategory::OutOfOffice => OUT_OF_OFFICE,
-        EventCategory::Meeting => MEETING,
-        EventCategory::AllDay => ALL_DAY,
-        EventCategory::Other => MUTED,
-    }
+fn tui_color(color: RgbColor) -> Color {
+    Color::Rgb(color.red, color.green, color.blue)
 }
 
 fn time_style(category: EventCategory) -> Style {
     match category {
         EventCategory::Holiday | EventCategory::OutOfOffice => {
-            Style::default().fg(category_color(category))
+            Style::default().fg(tui_color(category_color(category)))
         }
-        _ => Style::default().fg(MUTED),
+        _ => Style::default().fg(tui_color(MUTED)),
     }
 }
 
 fn title_style(category: EventCategory) -> Style {
     match category {
-        EventCategory::Holiday => Style::default().fg(FG).add_modifier(Modifier::BOLD),
-        EventCategory::OutOfOffice => Style::default().fg(FG).add_modifier(Modifier::ITALIC),
-        _ => Style::default().fg(FG),
+        EventCategory::Holiday => Style::default()
+            .fg(tui_color(FG))
+            .add_modifier(Modifier::BOLD),
+        EventCategory::OutOfOffice => Style::default()
+            .fg(tui_color(FG))
+            .add_modifier(Modifier::ITALIC),
+        _ => Style::default().fg(tui_color(FG)),
     }
 }
 
