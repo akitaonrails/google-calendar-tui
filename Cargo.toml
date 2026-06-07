@@ -1,6 +1,6 @@
 [package]
 name = "google-calendar-tui"
-version = "0.1.1"
+version = "0.1.2"
 edition = "2024"
 description = "A quiet read-only terminal agenda for Google Calendar via GNOME Online Accounts"
 repository = "https://github.com/akitaonrails/google-calendar-tui"

@@ -15,6 +15,7 @@ It fetches upcoming appointments once, prints them to stdout, and exits. It does
 - Minimal default rows: day, time, and appointment title only.
 - Subtle category color markers in TUI mode for holidays, birthdays, travel, focus time, out-of-office, meetings, and all-day events.
 - Optional `--details` mode for duration, video, account, calendar, and location columns.
+- Fetches up to 60 days ahead by default; override with `--fetch-days`.
 - Duplicate event suppression across calendars/accounts.
 
 ## Setup
@@ -121,7 +122,7 @@ Holiday detection uses Google holiday calendar IDs/names plus common holiday ter
 --all-calendars            Include hidden/unselected calendars
 --details                  Show duration, Meet, account/calendar, and location columns
 --tui                      Use the interactive TUI with the `more` command
---fetch-days DAYS          Future days fetched once at startup; default 365
+--fetch-days DAYS          Future days fetched once at startup; default 60
 --max-results-per-calendar N
 ```
 

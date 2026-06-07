@@ -34,7 +34,7 @@ struct Cli {
     tui: bool,
 
     /// Number of future days to fetch once at startup.
-    #[arg(long, default_value_t = 365, value_name = "DAYS")]
+    #[arg(long, default_value_t = 60, value_name = "DAYS")]
     fetch_days: i64,
 
     /// Maximum events to request per calendar page.
