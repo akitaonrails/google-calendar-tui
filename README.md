@@ -4,6 +4,8 @@ A quiet, read-only terminal agenda for Google Calendar using **GNOME Online Acco
 
 It fetches upcoming appointments once, prints them to stdout, and exits. It does not poll in the background. An optional interactive TUI can render only what fits in the terminal and reveal more with `m`.
 
+![google-calendar-tui showing a colored agenda in stdout mode](assets/screenshot.png)
+
 ## Features
 
 - Uses your existing Google accounts from GNOME Online Accounts.
@@ -57,7 +59,7 @@ google-calendar-tui
 
 When developing from a checkout, use `cargo run` instead.
 
-Default output is plain text:
+Default output is colored stdout:
 
 ```text
 Today
@@ -108,7 +110,7 @@ cargo run -- --tui
 Inside `--tui` mode:
 
 - `q` / Esc: quit
-- `m` / Space / Down: more, when hidden appointments remain in the current day/week
+- `m` / Space / Down: more, when hidden appointments remain
 - `0` / Home: return to the first page after using more
 
 ## Category colors
@@ -127,16 +129,24 @@ Holiday detection uses Google holiday calendar IDs/names plus common holiday ter
 
 ## Options
 
+Usage:
+
 ```text
---list-accounts            List usable GOA Google Calendar accounts and exit
---account NAME             Filter GOA accounts; repeat or comma-separate
---all-calendars            Include hidden/unselected calendars
---details                  Show duration, Meet, account/calendar, and location columns
---tui                      Use the interactive TUI with the `more` command
---no-color                 Disable ANSI colors in plain stdout output
---fetch-days DAYS          Future days fetched once at startup; default 60
---max-results-per-calendar N
+google-calendar-tui [OPTIONS]
 ```
+
+| Option | Description |
+| --- | --- |
+| `-a, --account <ACCOUNT>` | Filter GOA accounts by exact id, email, display name, or object path. If there is no exact match, a case-insensitive substring match is used. Repeat the flag or comma-separate values, for example `--account personal@example.com --account work@example.com` or `--account personal,work`. |
+| `--list-accounts` | List usable Google Calendar accounts known to GNOME Online Accounts and exit without fetching events. Respects `--account` filters. |
+| `--all-calendars` | Include calendars that are hidden or unselected in Google Calendar. Without this flag, only primary and selected calendars are read. Free/busy-only calendars are still skipped. |
+| `--details` | Show extra columns after the title: duration, `Meet` when a video link is detected, GOA account, calendar name, and location when present. |
+| `--tui` | Use the interactive Ratatui screen-fitting view instead of plain stdout. In TUI mode, `m`, Space, or Down reveals more hidden appointments; `0` or Home returns to the top; `q` or Esc quits. |
+| `--no-color` | Disable ANSI colors in plain stdout mode. The `NO_COLOR` environment variable also disables stdout colors. TUI colors are controlled by the terminal UI renderer. |
+| `--fetch-days <DAYS>` | Number of future days to fetch once at startup. Default: `60`. Values below `1` are clamped to `1`. |
+| `--max-results-per-calendar <N>` | Maximum events requested per calendar page. Default: `2500`. Values are clamped to Google Calendar's API range of `1..=2500`. |
+| `-h, --help` | Print help and exit. |
+| `-V, --version` | Print the package version and exit. |
 
 ## Notes
 
