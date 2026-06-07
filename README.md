@@ -2,7 +2,7 @@
 
 A quiet, read-only terminal agenda for Google Calendar using **GNOME Online Accounts**.
 
-It fetches upcoming appointments once, renders only what fits in the terminal, and exits when you press `q`. It does not poll in the background.
+It fetches upcoming appointments once, prints them to stdout, and exits. It does not poll in the background. An optional interactive TUI can render only what fits in the terminal and reveal more with `m`.
 
 ## Features
 
@@ -10,12 +10,11 @@ It fetches upcoming appointments once, renders only what fits in the terminal, a
 - No app-specific OAuth client setup or token cache.
 - Read-only Google Calendar API access.
 - One or more GOA Google accounts.
-- Responsive Ratatui UI that reflows on terminal resize.
-- Compact grouped agenda: busy days fill the screen; sparse calendars look further ahead.
-- Minimal default rows: category marker, time, and appointment title only.
-- Subtle category color markers for holidays, birthdays, travel, focus time, out-of-office, meetings, and all-day events.
+- Plain stdout output by default for scripting and quick shell use.
+- Optional responsive Ratatui UI with screen-fitting `more` behavior.
+- Minimal default rows: day, time, and appointment title only.
+- Subtle category color markers in TUI mode for holidays, birthdays, travel, focus time, out-of-office, meetings, and all-day events.
 - Optional `--details` mode for duration, video, account, calendar, and location columns.
-- `m` / space / down-arrow reveals more only when hidden appointments remain in the current day or week.
 - Duplicate event suppression across calendars/accounts.
 
 ## Setup
@@ -53,6 +52,17 @@ google-calendar-tui
 
 When developing from a checkout, use `cargo run` instead.
 
+Default output is plain text:
+
+```text
+Today
+  09:00    Standup
+  all-day  Some holiday
+
+Tomorrow
+  14:00    Dentist
+```
+
 ## Accounts
 
 List Google Calendar accounts known to GOA:
@@ -75,9 +85,15 @@ Show extra source/details columns:
 cargo run -- --details
 ```
 
-## Commands
+Use the interactive TUI with screen-fitting `more` behavior:
 
-Inside the TUI:
+```sh
+cargo run -- --tui
+```
+
+## TUI commands
+
+Inside `--tui` mode:
 
 - `q` / Esc: quit
 - `m` / Space / Down: more, when hidden appointments remain in the current day/week
@@ -85,7 +101,7 @@ Inside the TUI:
 
 ## Category colors
 
-Each appointment row gets a small colored marker. Titles stay mostly neutral to avoid visual noise.
+In `--tui` mode, each appointment row gets a small colored marker. Titles stay mostly neutral to avoid visual noise.
 
 - amber: holidays
 - violet: birthdays
@@ -104,6 +120,7 @@ Holiday detection uses Google holiday calendar IDs/names plus common holiday ter
 --account NAME             Filter GOA accounts; repeat or comma-separate
 --all-calendars            Include hidden/unselected calendars
 --details                  Show duration, Meet, account/calendar, and location columns
+--tui                      Use the interactive TUI with the `more` command
 --fetch-days DAYS          Future days fetched once at startup; default 365
 --max-results-per-calendar N
 ```
