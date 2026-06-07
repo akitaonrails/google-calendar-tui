@@ -1,10 +1,15 @@
 mod calendar;
+mod display;
 mod ui;
 
 use anyhow::{Context, Result};
 use calendar::CalendarEvent;
 use chrono::{Local, NaiveDate};
 use clap::Parser;
+use display::{day_label, format_duration, time_label};
+
+/// Default lookahead chosen to keep startup fast while still covering near-term planning.
+const DEFAULT_FETCH_DAYS: i64 = 60;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -34,11 +39,11 @@ struct Cli {
     tui: bool,
 
     /// Number of future days to fetch once at startup.
-    #[arg(long, default_value_t = 60, value_name = "DAYS")]
+    #[arg(long, default_value_t = DEFAULT_FETCH_DAYS, value_name = "DAYS")]
     fetch_days: i64,
 
-    /// Maximum events to request per calendar page.
-    #[arg(long, default_value_t = 2500, value_name = "N")]
+    /// Maximum events to request per calendar page. Google Calendar caps this at 2500.
+    #[arg(long, default_value_t = calendar::GOOGLE_EVENTS_MAX_RESULTS_PER_PAGE, value_name = "N")]
     max_results_per_calendar: u32,
 }
 
@@ -62,7 +67,12 @@ async fn main() -> Result<()> {
             );
         } else {
             for account in accounts {
-                println!("{}\t{}\t{}", account.label(), account.id, account.path());
+                println!(
+                    "{}\t{}\t{}",
+                    account.label(),
+                    calendar::sanitize_display_text(&account.id),
+                    account.path()
+                );
             }
         }
         return Ok(());
@@ -72,7 +82,9 @@ async fn main() -> Result<()> {
     let events = calendar::fetch_accounts(calendar::FetchOptions {
         account_filters: &account_filters,
         fetch_days: cli.fetch_days.max(1),
-        max_results_per_calendar: cli.max_results_per_calendar.clamp(1, 2500),
+        max_results_per_calendar: cli
+            .max_results_per_calendar
+            .clamp(1, calendar::GOOGLE_EVENTS_MAX_RESULTS_PER_PAGE),
         all_calendars: cli.all_calendars,
     })
     .await
@@ -80,7 +92,6 @@ async fn main() -> Result<()> {
 
     let mut events = calendar::dedupe_events(events);
     events.retain(|event| !event.is_past(fetched_at));
-    events.sort_by(calendar::sort_events);
 
     if cli.tui {
         ui::run(events, cli.details)
@@ -122,28 +133,6 @@ fn print_events(events: &[CalendarEvent], show_details: bool) {
     }
 }
 
-fn day_label(date: NaiveDate, today: NaiveDate) -> String {
-    if date == today {
-        "Today".to_string()
-    } else if Some(date) == today.succ_opt() {
-        "Tomorrow".to_string()
-    } else {
-        date.format("%a %b %-d").to_string()
-    }
-}
-
-fn time_label(event: &CalendarEvent) -> String {
-    if event.all_day {
-        if event.is_multi_day() {
-            "multi".to_string()
-        } else {
-            "all-day".to_string()
-        }
-    } else {
-        event.start.format("%H:%M").to_string()
-    }
-}
-
 fn details(event: &CalendarEvent) -> String {
     let mut parts = Vec::new();
 
@@ -166,18 +155,4 @@ fn details(event: &CalendarEvent) -> String {
     }
 
     parts.join(" · ")
-}
-
-fn format_duration(minutes: i64) -> String {
-    if minutes < 60 {
-        format!("{minutes}m")
-    } else {
-        let hours = minutes / 60;
-        let mins = minutes % 60;
-        if mins == 0 {
-            format!("{hours}h")
-        } else {
-            format!("{hours}h{mins:02}")
-        }
-    }
 }

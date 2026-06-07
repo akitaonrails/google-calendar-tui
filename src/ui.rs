@@ -17,7 +17,10 @@ use ratatui::{
 };
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-use crate::calendar::{CalendarEvent, EventCategory};
+use crate::{
+    calendar::{CalendarEvent, EventCategory},
+    display::{compact_day_label, day_label, format_duration, time_label},
+};
 
 const FG: Color = Color::Rgb(218, 218, 218);
 const MUTED: Color = Color::Rgb(120, 126, 135);
@@ -31,6 +34,16 @@ const FOCUS: Color = Color::Rgb(166, 227, 161);
 const OUT_OF_OFFICE: Color = Color::Rgb(243, 139, 168);
 const MEETING: Color = Color::Rgb(122, 162, 247);
 const ALL_DAY: Color = Color::Rgb(186, 194, 222);
+const EVENT_POLL_INTERVAL_MS: u64 = 250;
+const MIN_BODY_WIDTH: usize = 10;
+const MIN_BODY_ROWS: usize = 2;
+const COMPACT_EVENT_WIDTH: usize = 18;
+const CATEGORY_MARKER_MIN_WIDTH: usize = 20;
+const META_MIN_TITLE_GAP: usize = 12;
+const SOURCE_META_MIN_WIDTH: usize = 60;
+const LOCATION_META_MIN_WIDTH: usize = 96;
+const FOOTER_TINY_WIDTH: usize = 20;
+const FOOTER_COMPACT_WIDTH: usize = 36;
 
 #[derive(Debug)]
 struct App {
@@ -114,7 +127,7 @@ fn run_loop(terminal: &mut Terminal<CrosstermBackend<io::Stdout>>, app: &mut App
     loop {
         terminal.draw(|frame| render(frame, app))?;
 
-        if !event::poll(StdDuration::from_millis(250))? {
+        if !event::poll(StdDuration::from_millis(EVENT_POLL_INTERVAL_MS))? {
             continue;
         }
 
@@ -179,7 +192,7 @@ fn build_body_plan(
         return (Vec::new(), PlanSummary::default());
     }
 
-    if width < 10 || body_rows < 2 {
+    if width < MIN_BODY_WIDTH || body_rows < MIN_BODY_ROWS {
         return (
             vec![Line::from(Span::styled(
                 truncate_to_width("Terminal too small.", width),
@@ -250,10 +263,14 @@ fn day_header(date: NaiveDate, today: NaiveDate, width: usize) -> Line<'static> 
 
 fn event_line(event: &CalendarEvent, show_details: bool, width: usize) -> Line<'static> {
     let category = event.category();
-    let marker = if width >= 20 { "▏ " } else { "" };
+    let marker = if width >= CATEGORY_MARKER_MIN_WIDTH {
+        "▏ "
+    } else {
+        ""
+    };
     let marker_width = UnicodeWidthStr::width(marker);
 
-    if width < 18 {
+    if width < COMPACT_EVENT_WIDTH {
         return Line::from(Span::styled(
             truncate_to_width(&event.title, width),
             title_style(category),
@@ -265,7 +282,7 @@ fn event_line(event: &CalendarEvent, show_details: bool, width: usize) -> Line<'
     let prefix_width = marker_width + UnicodeWidthStr::width(time_column.as_str()) + 1;
     let meta = meta_label(event, show_details, width);
     let meta_width = UnicodeWidthStr::width(meta.as_str());
-    let show_meta = !meta.is_empty() && width > prefix_width + meta_width + 12;
+    let show_meta = !meta.is_empty() && width > prefix_width + meta_width + META_MIN_TITLE_GAP;
     let title_width = if show_meta {
         width.saturating_sub(prefix_width + meta_width + 2)
     } else {
@@ -328,18 +345,6 @@ fn title_style(category: EventCategory) -> Style {
     }
 }
 
-fn time_label(event: &CalendarEvent) -> String {
-    if event.all_day {
-        if event.is_multi_day() {
-            "multi".to_string()
-        } else {
-            "all-day".to_string()
-        }
-    } else {
-        event.start.format("%H:%M").to_string()
-    }
-}
-
 fn meta_label(event: &CalendarEvent, show_details: bool, width: usize) -> String {
     if !show_details {
         return String::new();
@@ -355,16 +360,11 @@ fn meta_label(event: &CalendarEvent, show_details: bool, width: usize) -> String
         parts.push("Meet".to_string());
     }
 
-    if width >= 60 {
-        let cal = if event.account == "default" {
-            event.calendar_name.clone()
-        } else {
-            format!("{} · {}", event.account, event.calendar_name)
-        };
-        parts.push(cal);
+    if width >= SOURCE_META_MIN_WIDTH {
+        parts.push(format!("{} · {}", event.account, event.calendar_name));
     }
 
-    if width >= 96
+    if width >= LOCATION_META_MIN_WIDTH
         && let Some(location) = event
             .location
             .as_deref()
@@ -374,20 +374,6 @@ fn meta_label(event: &CalendarEvent, show_details: bool, width: usize) -> String
     }
 
     parts.join(" · ")
-}
-
-fn format_duration(minutes: i64) -> String {
-    if minutes < 60 {
-        format!("{minutes}m")
-    } else {
-        let hours = minutes / 60;
-        let mins = minutes % 60;
-        if mins == 0 {
-            format!("{hours}h")
-        } else {
-            format!("{hours}h{mins:02}")
-        }
-    }
 }
 
 fn fill_more_summary(events: &[CalendarEvent], summary: &mut PlanSummary, today: NaiveDate) {
@@ -435,7 +421,13 @@ fn fill_more_summary(events: &[CalendarEvent], summary: &mut PlanSummary, today:
             }
             .to_string(),
         );
+        return;
     }
+
+    summary.can_more = true;
+    summary.more_hidden_count = events.len().saturating_sub(first_hidden);
+    summary.more_end_index = None;
+    summary.more_label = Some("later".to_string());
 }
 
 fn footer_text(app: &App, width: usize) -> String {
@@ -459,9 +451,9 @@ fn footer_text(app: &App, width: usize) -> String {
     }
 
     let full = parts.join(" · ");
-    if width < 20 {
+    if width < FOOTER_TINY_WIDTH {
         truncate_to_width("q", width)
-    } else if width < 36 {
+    } else if width < FOOTER_COMPACT_WIDTH {
         let compact = if app.last_plan.can_more {
             "q · m"
         } else {
@@ -471,20 +463,6 @@ fn footer_text(app: &App, width: usize) -> String {
     } else {
         truncate_to_width(&full, width)
     }
-}
-
-fn day_label(date: NaiveDate, today: NaiveDate) -> String {
-    if date == today {
-        "Today".to_string()
-    } else if Some(date) == today.succ_opt() {
-        "Tomorrow".to_string()
-    } else {
-        date.format("%a %b %-d").to_string()
-    }
-}
-
-fn compact_day_label(date: NaiveDate) -> String {
-    date.format("%a %b %-d").to_string()
 }
 
 fn truncate_to_width(value: &str, max_width: usize) -> String {
@@ -516,4 +494,46 @@ fn truncate_to_width(value: &str, max_width: usize) -> String {
 
     out.push('…');
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{DateTime, Local, LocalResult, TimeZone};
+
+    fn local_datetime(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> DateTime<Local> {
+        match Local.with_ymd_and_hms(year, month, day, hour, minute, 0) {
+            LocalResult::Single(datetime) => datetime,
+            LocalResult::Ambiguous(earliest, _) => earliest,
+            LocalResult::None => Local
+                .with_ymd_and_hms(year, month, day, hour + 1, minute, 0)
+                .earliest()
+                .expect("valid local datetime"),
+        }
+    }
+
+    #[test]
+    fn truncate_to_width_preserves_display_width_budget() {
+        assert_eq!(truncate_to_width("abcdef", 4), "abc…");
+        assert_eq!(truncate_to_width("abcdef", 1), "…");
+        assert_eq!(truncate_to_width("abcdef", 0), "");
+        assert!(UnicodeWidthStr::width(truncate_to_width("a界b", 3).as_str()) <= 3);
+    }
+
+    #[test]
+    fn more_can_advance_to_later_days_when_next_hidden_event_is_not_same_week() {
+        let events = vec![
+            crate::calendar::test_event("First", local_datetime(2026, 1, 1, 9, 0)),
+            crate::calendar::test_event("Later", local_datetime(2026, 2, 1, 9, 0)),
+            crate::calendar::test_event("Latest", local_datetime(2026, 3, 1, 9, 0)),
+        ];
+
+        let (_lines, summary) = build_body_plan(&events, 0, None, false, 2, 80);
+
+        assert_eq!(summary.first_hidden, Some(1));
+        assert!(summary.can_more);
+        assert_eq!(summary.more_hidden_count, 2);
+        assert_eq!(summary.more_label.as_deref(), Some("later"));
+        assert_eq!(summary.more_end_index, None);
+    }
 }

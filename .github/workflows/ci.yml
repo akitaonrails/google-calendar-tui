@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - uses: dtolnay/rust-toolchain@29eef336d9b2848a0b548edc03f92a220660cdb8 # stable
+        with:
+          toolchain: stable
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+
+      - name: Install nasm (ring assembles its primitives)
+        run: sudo apt-get update && sudo apt-get install -y nasm
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@56545b37b57562edd73171cb6c62cc509db4c34e # v2
+        with:
+          tool: cargo-audit
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Lint
+        run: cargo clippy --locked --all-targets --all-features -- -D warnings
+
+      - name: Test
+        run: cargo test --locked --all-targets
+
+      - name: Audit dependencies
+        run: cargo audit
+
+      - name: Package check
+        run: cargo package --locked

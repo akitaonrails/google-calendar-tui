@@ -17,6 +17,7 @@ It fetches upcoming appointments once, prints them to stdout, and exits. It does
 - Optional `--details` mode for duration, video, account, calendar, and location columns.
 - Fetches up to 60 days ahead by default; override with `--fetch-days`.
 - Duplicate event suppression across calendars/accounts.
+- Strips terminal control sequences from Google/GOA display text before printing or rendering.
 
 ## Setup
 
@@ -30,6 +31,8 @@ yay -S google-calendar-tui          # builds from source
 ```
 
 ### From source
+
+Requires Rust 1.88 or newer.
 
 ```sh
 cargo install --git https://github.com/akitaonrails/google-calendar-tui
@@ -129,3 +132,5 @@ Holiday detection uses Google holiday calendar IDs/names plus common holiday ter
 ## Notes
 
 GOA returns short-lived access tokens over D-Bus. The app does not persist Google tokens. If GOA says the account needs attention, fix it in GNOME Settings and run the app again.
+
+By default, only your primary and selected Google calendars are read. Use `--all-calendars` only when you also want calendars hidden/unselected in Google Calendar.
