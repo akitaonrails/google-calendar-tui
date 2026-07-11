@@ -19,10 +19,7 @@ use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 use crate::{
     calendar::{CalendarEvent, EventCategory},
-    display::{
-        ACCENT, DIM, FG, MUTED, RgbColor, TODAY, category_color, compact_day_label, day_label,
-        format_duration, time_label,
-    },
+    display::{Palette, RgbColor, compact_day_label, day_label, format_duration, time_label},
 };
 
 const EVENT_POLL_INTERVAL_MS: u64 = 250;
@@ -43,16 +40,18 @@ struct App {
     start_index: usize,
     period_end_index: Option<usize>,
     last_plan: PlanSummary,
+    palette: Palette,
 }
 
 impl App {
-    fn new(events: Vec<CalendarEvent>, show_details: bool) -> Self {
+    fn new(events: Vec<CalendarEvent>, show_details: bool, palette: Palette) -> Self {
         Self {
             events,
             show_details,
             start_index: 0,
             period_end_index: None,
             last_plan: PlanSummary::default(),
+            palette,
         }
     }
 
@@ -81,7 +80,7 @@ struct PlanSummary {
     more_end_index: Option<usize>,
 }
 
-pub fn run(events: Vec<CalendarEvent>, show_details: bool) -> Result<()> {
+pub fn run(events: Vec<CalendarEvent>, show_details: bool, palette: Palette) -> Result<()> {
     enable_raw_mode()?;
     let mut guard = TerminalGuard {
         alternate_screen: false,
@@ -92,7 +91,7 @@ pub fn run(events: Vec<CalendarEvent>, show_details: bool) -> Result<()> {
 
     let backend = CrosstermBackend::new(stdout);
     let mut terminal = Terminal::new(backend)?;
-    let mut app = App::new(events, show_details);
+    let mut app = App::new(events, show_details, palette);
     let result = run_loop(&mut terminal, &mut app);
 
     let _ = terminal.show_cursor();
@@ -161,12 +160,14 @@ fn render(frame: &mut Frame<'_>, app: &mut App) {
         app.show_details,
         chunks[0].height as usize,
         width,
+        app.palette,
     );
     app.last_plan = summary;
 
     frame.render_widget(Paragraph::new(body_lines), chunks[0]);
     frame.render_widget(
-        Paragraph::new(footer_text(app, width)).style(Style::default().fg(tui_color(MUTED))),
+        Paragraph::new(footer_text(app, width))
+            .style(Style::default().fg(tui_color(app.palette.muted))),
         chunks[1],
     );
 }
@@ -178,6 +179,7 @@ fn build_body_plan(
     show_details: bool,
     body_rows: usize,
     width: usize,
+    palette: Palette,
 ) -> (Vec<Line<'static>>, PlanSummary) {
     if body_rows == 0 {
         return (Vec::new(), PlanSummary::default());
@@ -187,7 +189,7 @@ fn build_body_plan(
         return (
             vec![Line::from(Span::styled(
                 truncate_to_width("Terminal too small.", width),
-                Style::default().fg(tui_color(MUTED)),
+                Style::default().fg(tui_color(palette.muted)),
             ))],
             PlanSummary::default(),
         );
@@ -196,13 +198,13 @@ fn build_body_plan(
     if events.is_empty() {
         let mut lines = vec![Line::from(Span::styled(
             "No upcoming appointments.",
-            Style::default().fg(tui_color(FG)),
+            Style::default().fg(tui_color(palette.foreground)),
         ))];
 
         if body_rows > 1 {
             lines.push(Line::from(Span::styled(
                 "Your calendar is clear.",
-                Style::default().fg(tui_color(DIM)),
+                Style::default().fg(tui_color(palette.dim)),
             )));
         }
 
@@ -229,11 +231,11 @@ fn build_body_plan(
         }
 
         if needs_day_header {
-            lines.push(day_header(event_day, today, width));
+            lines.push(day_header(event_day, today, width, palette));
             current_day = Some(event_day);
         }
 
-        lines.push(event_line(event, show_details, width));
+        lines.push(event_line(event, show_details, width, palette));
         summary.last_visible = Some(index);
         index += 1;
     }
@@ -242,9 +244,13 @@ fn build_body_plan(
     (lines, summary)
 }
 
-fn day_header(date: NaiveDate, today: NaiveDate, width: usize) -> Line<'static> {
+fn day_header(date: NaiveDate, today: NaiveDate, width: usize, palette: Palette) -> Line<'static> {
     let label = day_label(date, today);
-    let color = if date == today { TODAY } else { ACCENT };
+    let color = if date == today {
+        palette.today
+    } else {
+        palette.accent
+    };
 
     Line::from(Span::styled(
         truncate_to_width(&label, width),
@@ -254,7 +260,12 @@ fn day_header(date: NaiveDate, today: NaiveDate, width: usize) -> Line<'static> 
     ))
 }
 
-fn event_line(event: &CalendarEvent, show_details: bool, width: usize) -> Line<'static> {
+fn event_line(
+    event: &CalendarEvent,
+    show_details: bool,
+    width: usize,
+    palette: Palette,
+) -> Line<'static> {
     let category = event.category();
     let marker = if width >= CATEGORY_MARKER_MIN_WIDTH {
         "▏ "
@@ -266,7 +277,7 @@ fn event_line(event: &CalendarEvent, show_details: bool, width: usize) -> Line<'
     if width < COMPACT_EVENT_WIDTH {
         return Line::from(Span::styled(
             truncate_to_width(&event.title, width),
-            title_style(category),
+            title_style(category, palette),
         ));
     }
 
@@ -289,20 +300,23 @@ fn event_line(event: &CalendarEvent, show_details: bool, width: usize) -> Line<'
     if !marker.is_empty() {
         spans.push(Span::styled(
             marker,
-            Style::default().fg(tui_color(category_color(category))),
+            Style::default().fg(tui_color(palette.category_color(category))),
         ));
     }
 
     spans.extend([
-        Span::styled(time_column, time_style(category)),
+        Span::styled(time_column, time_style(category, palette)),
         Span::raw(" "),
-        Span::styled(title, title_style(category)),
+        Span::styled(title, title_style(category, palette)),
     ]);
 
     if show_meta {
         let padding = width.saturating_sub(used + meta_width).max(1);
         spans.push(Span::raw(" ".repeat(padding)));
-        spans.push(Span::styled(meta, Style::default().fg(tui_color(DIM))));
+        spans.push(Span::styled(
+            meta,
+            Style::default().fg(tui_color(palette.dim)),
+        ));
     }
 
     Line::from(spans)
@@ -312,24 +326,24 @@ fn tui_color(color: RgbColor) -> Color {
     Color::Rgb(color.red, color.green, color.blue)
 }
 
-fn time_style(category: EventCategory) -> Style {
+fn time_style(category: EventCategory, palette: Palette) -> Style {
     match category {
         EventCategory::Holiday | EventCategory::OutOfOffice => {
-            Style::default().fg(tui_color(category_color(category)))
+            Style::default().fg(tui_color(palette.category_color(category)))
         }
-        _ => Style::default().fg(tui_color(MUTED)),
+        _ => Style::default().fg(tui_color(palette.muted)),
     }
 }
 
-fn title_style(category: EventCategory) -> Style {
+fn title_style(category: EventCategory, palette: Palette) -> Style {
     match category {
         EventCategory::Holiday => Style::default()
-            .fg(tui_color(FG))
+            .fg(tui_color(palette.foreground))
             .add_modifier(Modifier::BOLD),
         EventCategory::OutOfOffice => Style::default()
-            .fg(tui_color(FG))
+            .fg(tui_color(palette.foreground))
             .add_modifier(Modifier::ITALIC),
-        _ => Style::default().fg(tui_color(FG)),
+        _ => Style::default().fg(tui_color(palette.foreground)),
     }
 }
 
@@ -516,12 +530,26 @@ mod tests {
             crate::calendar::test_event("Latest", local_datetime(2026, 3, 1, 9, 0)),
         ];
 
-        let (_lines, summary) = build_body_plan(&events, 0, None, false, 2, 80);
+        let (_lines, summary) = build_body_plan(&events, 0, None, false, 2, 80, Palette::DEFAULT);
 
         assert_eq!(summary.first_hidden, Some(1));
         assert!(summary.can_more);
         assert_eq!(summary.more_hidden_count, 2);
         assert_eq!(summary.more_label.as_deref(), Some("later"));
         assert_eq!(summary.more_end_index, None);
+    }
+
+    #[test]
+    fn body_plan_uses_selected_theme_colors() {
+        let events = vec![crate::calendar::test_event(
+            "Vacation",
+            local_datetime(2026, 8, 1, 9, 0),
+        )];
+
+        let (lines, _summary) = build_body_plan(&events, 0, None, false, 2, 80, Palette::NERV);
+
+        assert_eq!(lines[0].spans[0].style.fg, Some(Color::Rgb(0, 255, 135)));
+        assert_eq!(lines[1].spans[0].style.fg, Some(Color::Rgb(255, 0, 0)));
+        assert_eq!(lines[1].spans[1].style.fg, Some(Color::Rgb(255, 0, 0)));
     }
 }

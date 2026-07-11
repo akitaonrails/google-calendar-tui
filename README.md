@@ -13,7 +13,7 @@ It fetches upcoming appointments once, prints them to stdout, and exits. It does
 - Read-only Google Calendar API access.
 - One or more GOA Google accounts.
 - Optional read-only private iCal/ICS sources for headless or non-GNOME environments.
-- Colored plain stdout output by default for quick shell use; disable ANSI colors with `--no-color`.
+- Colored plain stdout output by default for quick shell use; choose `default`, `evangelion`, or `nerv` with `--theme`, and disable stdout ANSI colors with `--no-color`.
 - Optional responsive Ratatui UI with screen-fitting `more` behavior.
 - Minimal default rows: day, time, and appointment title only.
 - Subtle category color markers in TUI mode for holidays, birthdays, travel, focus time, out-of-office, meetings, and all-day events.
@@ -130,9 +130,19 @@ Inside `--tui` mode:
 - `m` / Space / Down: more, when hidden appointments remain
 - `0` / Home: return to the first page after using more
 
-## Category colors
+## Colors and themes
 
-In stdout mode, appointment rows are colored by category. In `--tui` mode, each appointment row gets a small colored marker and titles stay mostly neutral to avoid visual noise.
+In stdout mode, appointment rows are colored by category. In `--tui` mode, each appointment row gets a small colored marker and titles stay mostly neutral to avoid visual noise. The selected theme applies to both stdout ANSI colors and TUI colors.
+
+Available themes:
+
+- `default`: the original muted terminal palette.
+- `evangelion`: purple/lavender, orange, and bright green inspired by the classic Evangelion terminal look.
+- `nerv`: orange/amber headers with neon green accents and red out-of-office/urgent markers.
+
+`--no-color` and the `NO_COLOR` environment variable disable ANSI colors only in plain stdout mode. TUI colors still use the selected theme.
+
+Default category mapping:
 
 - amber: holidays
 - violet: birthdays
@@ -160,7 +170,8 @@ google-calendar-tui [OPTIONS]
 | `--ics <URL>` | Fetch events from a private iCal/ICS URL instead of GOA. Repeat for multiple calendars. Conflicts with `--list-accounts`, `--account`, and `--all-calendars`. Treat URLs as secrets. |
 | `--details` | Show extra columns after the title: duration, `Meet` when a video link is detected, GOA account, calendar name, and location when present. |
 | `--tui` | Use the interactive Ratatui screen-fitting view instead of plain stdout. In TUI mode, `m`, Space, or Down reveals more hidden appointments; `0` or Home returns to the top; `q` or Esc quits. |
-| `--no-color` | Disable ANSI colors in plain stdout mode. The `NO_COLOR` environment variable also disables stdout colors. TUI colors are controlled by the terminal UI renderer. |
+| `--theme <THEME>` | Color theme for stdout ANSI and TUI rendering. Allowed values: `default`, `evangelion`, `nerv`. Default: `default`. |
+| `--no-color` | Disable ANSI colors in plain stdout mode. The `NO_COLOR` environment variable also disables stdout colors. TUI colors still use `--theme`. |
 | `--fetch-days <DAYS>` | Number of future days to fetch once at startup. Default: `60`. Values below `1` are clamped to `1`. |
 | `--max-results-per-calendar <N>` | Maximum events requested per calendar page. Default: `2500`. Values are clamped to Google Calendar's API range of `1..=2500`. |
 | `-h, --help` | Print help and exit. |

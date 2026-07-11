@@ -21,6 +21,110 @@ pub const OUT_OF_OFFICE: RgbColor = RgbColor::new(243, 139, 168);
 pub const MEETING: RgbColor = RgbColor::new(122, 162, 247);
 pub const ALL_DAY: RgbColor = RgbColor::new(186, 194, 222);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, clap::ValueEnum)]
+#[value(rename_all = "kebab-case")]
+pub enum Theme {
+    Default,
+    Evangelion,
+    Nerv,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Palette {
+    pub foreground: RgbColor,
+    pub muted: RgbColor,
+    pub dim: RgbColor,
+    pub accent: RgbColor,
+    pub today: RgbColor,
+    pub holiday: RgbColor,
+    pub birthday: RgbColor,
+    pub travel: RgbColor,
+    pub focus: RgbColor,
+    pub out_of_office: RgbColor,
+    pub meeting: RgbColor,
+    pub all_day: RgbColor,
+}
+
+impl Theme {
+    pub const fn palette(self) -> Palette {
+        match self {
+            Self::Default => Palette::DEFAULT,
+            Self::Evangelion => Palette::EVANGELION,
+            Self::Nerv => Palette::NERV,
+        }
+    }
+}
+
+impl std::fmt::Display for Theme {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::Default => "default",
+            Self::Evangelion => "evangelion",
+            Self::Nerv => "nerv",
+        })
+    }
+}
+
+impl Palette {
+    pub const DEFAULT: Self = Self {
+        foreground: FG,
+        muted: MUTED,
+        dim: DIM,
+        accent: ACCENT,
+        today: TODAY,
+        holiday: HOLIDAY,
+        birthday: BIRTHDAY,
+        travel: TRAVEL,
+        focus: FOCUS,
+        out_of_office: OUT_OF_OFFICE,
+        meeting: MEETING,
+        all_day: ALL_DAY,
+    };
+
+    pub const EVANGELION: Self = Self {
+        foreground: RgbColor::new(215, 95, 255),
+        muted: RgbColor::new(255, 135, 0),
+        dim: RgbColor::new(135, 135, 175),
+        accent: RgbColor::new(135, 255, 0),
+        today: RgbColor::new(135, 255, 0),
+        holiday: RgbColor::new(255, 135, 0),
+        birthday: RgbColor::new(215, 95, 255),
+        travel: RgbColor::new(135, 95, 255),
+        focus: RgbColor::new(135, 255, 0),
+        out_of_office: RgbColor::new(255, 135, 0),
+        meeting: RgbColor::new(135, 95, 255),
+        all_day: RgbColor::new(135, 135, 175),
+    };
+
+    pub const NERV: Self = Self {
+        foreground: RgbColor::new(255, 175, 0),
+        muted: RgbColor::new(215, 135, 0),
+        dim: RgbColor::new(102, 102, 102),
+        accent: RgbColor::new(0, 255, 135),
+        today: RgbColor::new(0, 255, 135),
+        holiday: RgbColor::new(255, 135, 0),
+        birthday: RgbColor::new(255, 175, 0),
+        travel: RgbColor::new(215, 135, 0),
+        focus: RgbColor::new(0, 255, 135),
+        out_of_office: RgbColor::new(255, 0, 0),
+        meeting: RgbColor::new(255, 135, 0),
+        all_day: RgbColor::new(102, 102, 102),
+    };
+
+    pub const fn category_color(self, category: EventCategory) -> RgbColor {
+        match category {
+            EventCategory::Holiday => self.holiday,
+            EventCategory::Birthday => self.birthday,
+            EventCategory::Travel => self.travel,
+            EventCategory::Focus => self.focus,
+            EventCategory::OutOfOffice => self.out_of_office,
+            EventCategory::Meeting => self.meeting,
+            EventCategory::AllDay => self.all_day,
+            EventCategory::Other => self.foreground,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RgbColor {
     pub red: u8,
@@ -78,44 +182,51 @@ pub fn stdout_colors_enabled(disabled_by_cli: bool) -> bool {
     !disabled_by_cli && std::env::var_os("NO_COLOR").is_none()
 }
 
-pub fn category_color(category: EventCategory) -> RgbColor {
-    match category {
-        EventCategory::Holiday => HOLIDAY,
-        EventCategory::Birthday => BIRTHDAY,
-        EventCategory::Travel => TRAVEL,
-        EventCategory::Focus => FOCUS,
-        EventCategory::OutOfOffice => OUT_OF_OFFICE,
-        EventCategory::Meeting => MEETING,
-        EventCategory::AllDay => ALL_DAY,
-        EventCategory::Other => FG,
-    }
-}
-
-pub fn colorize_day_label(label: &str, date: NaiveDate, today: NaiveDate, enabled: bool) -> String {
-    let color = if date == today { TODAY } else { ACCENT };
+pub fn colorize_day_label(
+    label: &str,
+    date: NaiveDate,
+    today: NaiveDate,
+    enabled: bool,
+    palette: Palette,
+) -> String {
+    let color = if date == today {
+        palette.today
+    } else {
+        palette.accent
+    };
     ansi_color(label, color, true, false, enabled)
 }
 
-pub fn colorize_time_label(label: &str, category: EventCategory, enabled: bool) -> String {
+pub fn colorize_time_label(
+    label: &str,
+    category: EventCategory,
+    enabled: bool,
+    palette: Palette,
+) -> String {
     let color = match category {
-        EventCategory::Other => MUTED,
-        _ => category_color(category),
+        EventCategory::Other => palette.muted,
+        _ => palette.category_color(category),
     };
     ansi_color(label, color, false, false, enabled)
 }
 
-pub fn colorize_title(label: &str, category: EventCategory, enabled: bool) -> String {
+pub fn colorize_title(
+    label: &str,
+    category: EventCategory,
+    enabled: bool,
+    palette: Palette,
+) -> String {
     ansi_color(
         label,
-        category_color(category),
+        palette.category_color(category),
         matches!(category, EventCategory::Holiday),
         matches!(category, EventCategory::OutOfOffice),
         enabled,
     )
 }
 
-pub fn colorize_details(label: &str, enabled: bool) -> String {
-    ansi_color(label, DIM, false, false, enabled)
+pub fn colorize_details(label: &str, enabled: bool, palette: Palette) -> String {
+    ansi_color(label, palette.dim, false, false, enabled)
 }
 
 fn ansi_color(label: &str, color: RgbColor, bold: bool, italic: bool, enabled: bool) -> String {
@@ -138,6 +249,9 @@ fn ansi_color(label: &str, color: RgbColor, bold: bool, italic: bool, enabled: b
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn day_label_uses_relative_names_for_today_and_tomorrow() {
@@ -166,13 +280,50 @@ mod tests {
 
     #[test]
     fn colorize_title_can_emit_or_suppress_ansi() {
-        let colored = colorize_title("Holiday", EventCategory::Holiday, true);
+        let colored = colorize_title("Holiday", EventCategory::Holiday, true, Palette::DEFAULT);
 
         assert!(colored.starts_with("\u{1b}[1;38;2;245;194;129m"));
         assert!(colored.ends_with(ANSI_RESET));
         assert_eq!(
-            colorize_title("Holiday", EventCategory::Holiday, false),
+            colorize_title("Holiday", EventCategory::Holiday, false, Palette::DEFAULT),
             "Holiday"
+        );
+    }
+
+    #[test]
+    fn no_color_env_disables_stdout_colors() {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        let previous = std::env::var_os("NO_COLOR");
+
+        unsafe {
+            std::env::set_var("NO_COLOR", "1");
+        }
+        assert!(!stdout_colors_enabled(false));
+
+        unsafe {
+            if let Some(previous) = previous {
+                std::env::set_var("NO_COLOR", previous);
+            } else {
+                std::env::remove_var("NO_COLOR");
+            }
+        }
+    }
+
+    #[test]
+    fn named_theme_palettes_use_expected_key_colors() {
+        assert_eq!(Theme::Default.palette().holiday, HOLIDAY);
+        assert_eq!(
+            Theme::Evangelion.palette().foreground,
+            RgbColor::new(215, 95, 255)
+        );
+        assert_eq!(
+            Theme::Evangelion.palette().accent,
+            RgbColor::new(135, 255, 0)
+        );
+        assert_eq!(Theme::Nerv.palette().foreground, RgbColor::new(255, 175, 0));
+        assert_eq!(
+            Theme::Nerv.palette().out_of_office,
+            RgbColor::new(255, 0, 0)
         );
     }
 }

@@ -8,7 +8,7 @@ use calendar::CalendarEvent;
 use chrono::{Local, NaiveDate};
 use clap::Parser;
 use display::{
-    colorize_day_label, colorize_details, colorize_time_label, colorize_title, day_label,
+    Theme, colorize_day_label, colorize_details, colorize_time_label, colorize_title, day_label,
     format_duration, stdout_colors_enabled, time_label,
 };
 
@@ -49,6 +49,10 @@ struct Cli {
     /// Disable ANSI colors in plain stdout output. Also disabled by NO_COLOR.
     #[arg(long)]
     no_color: bool,
+
+    /// Color theme for stdout ANSI and TUI rendering.
+    #[arg(long, value_enum, default_value_t = Theme::Default, value_name = "THEME")]
+    theme: Theme,
 
     /// Number of future days to fetch once at startup.
     #[arg(long, default_value_t = DEFAULT_FETCH_DAYS, value_name = "DAYS")]
@@ -113,14 +117,24 @@ async fn main() -> Result<()> {
     events.retain(|event| !event.is_past(fetched_at));
 
     if cli.tui {
-        ui::run(events, cli.details)
+        ui::run(events, cli.details, cli.theme.palette())
     } else {
-        print_events(&events, cli.details, stdout_colors_enabled(cli.no_color));
+        print_events(
+            &events,
+            cli.details,
+            stdout_colors_enabled(cli.no_color),
+            cli.theme.palette(),
+        );
         Ok(())
     }
 }
 
-fn print_events(events: &[CalendarEvent], show_details: bool, use_color: bool) {
+fn print_events(
+    events: &[CalendarEvent],
+    show_details: bool,
+    use_color: bool,
+    palette: display::Palette,
+) {
     if events.is_empty() {
         println!("No upcoming appointments.");
         return;
@@ -138,23 +152,28 @@ fn print_events(events: &[CalendarEvent], show_details: bool, use_color: bool) {
             let label = day_label(event_day, today);
             println!(
                 "{}",
-                colorize_day_label(&label, event_day, today, use_color)
+                colorize_day_label(&label, event_day, today, use_color, palette)
             );
             current_day = Some(event_day);
         }
 
-        println!("{}", event_line(event, show_details, use_color));
+        println!("{}", event_line(event, show_details, use_color, palette));
     }
 }
 
-fn event_line(event: &CalendarEvent, show_details: bool, use_color: bool) -> String {
+fn event_line(
+    event: &CalendarEvent,
+    show_details: bool,
+    use_color: bool,
+    palette: display::Palette,
+) -> String {
     let category = event.category();
     let time = format!("{:<7}", time_label(event));
-    let time = colorize_time_label(&time, category, use_color);
-    let title = colorize_title(&event.title, category, use_color);
+    let time = colorize_time_label(&time, category, use_color, palette);
+    let title = colorize_title(&event.title, category, use_color, palette);
 
     if show_details {
-        let details = colorize_details(&details(event), use_color);
+        let details = colorize_details(&details(event), use_color, palette);
         format!("  {time}  {title}  {details}")
     } else {
         format!("  {time}  {title}")
@@ -206,7 +225,10 @@ mod tests {
         let mut event = calendar::test_event("Some holiday", local_datetime(2026, 12, 25, 9, 0));
         event.all_day = true;
 
-        assert_eq!(event_line(&event, false, false), "  all-day  Some holiday");
+        assert_eq!(
+            event_line(&event, false, false, Theme::Default.palette()),
+            "  all-day  Some holiday"
+        );
     }
 
     #[test]
@@ -214,10 +236,33 @@ mod tests {
         let mut event = calendar::test_event("Some holiday", local_datetime(2026, 12, 25, 9, 0));
         event.all_day = true;
 
-        let line = event_line(&event, false, true);
+        let line = event_line(&event, false, true, Theme::Default.palette());
 
         assert!(line.contains("\u{1b}[38;2;245;194;129m"));
         assert!(line.contains("\u{1b}[1;38;2;245;194;129mSome holiday\u{1b}[0m"));
+    }
+
+    #[test]
+    fn event_line_uses_selected_theme_colors() {
+        let event = calendar::test_event("Vacation", local_datetime(2026, 12, 25, 9, 0));
+
+        let line = event_line(&event, false, true, Theme::Nerv.palette());
+
+        assert!(line.contains("\u{1b}[38;2;255;0;0m"));
+        assert!(line.contains("\u{1b}[3;38;2;255;0;0mVacation\u{1b}[0m"));
+    }
+
+    #[test]
+    fn cli_parses_theme_names_and_defaults_to_default() {
+        let default_cli = Cli::try_parse_from(["app"]).expect("default CLI");
+        assert_eq!(default_cli.theme, Theme::Default);
+
+        let evangelion = Cli::try_parse_from(["app", "--theme", "evangelion"]).expect("theme CLI");
+        assert_eq!(evangelion.theme, Theme::Evangelion);
+
+        let nerv = Cli::try_parse_from(["app", "--theme", "nerv"]).expect("theme CLI");
+        assert_eq!(nerv.theme, Theme::Nerv);
+        assert!(Cli::try_parse_from(["app", "--theme", "unknown"]).is_err());
     }
 
     #[test]
