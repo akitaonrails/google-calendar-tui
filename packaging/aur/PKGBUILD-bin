@@ -2,7 +2,7 @@
 
 pkgname=google-calendar-tui-bin
 _pkgname=google-calendar-tui
-pkgver=0.1.4
+pkgver=0.1.5
 pkgrel=1
 pkgdesc="Read-only terminal agenda for Google Calendar via GNOME Online Accounts (prebuilt binary)"
 arch=('x86_64' 'aarch64')
