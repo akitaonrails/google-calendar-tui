@@ -1,5 +1,6 @@
 mod calendar;
 mod display;
+mod ics;
 mod ui;
 
 use anyhow::{Context, Result};
@@ -32,6 +33,10 @@ struct Cli {
     /// Include calendars hidden/unselected in Google Calendar.
     #[arg(long)]
     all_calendars: bool,
+
+    /// Fetch events from a private ICS/iCal URL instead of GNOME Online Accounts. Repeat for multiple calendars.
+    #[arg(long, value_name = "URL", conflicts_with_all = ["list_accounts", "account", "all_calendars"])]
+    ics: Vec<String>,
 
     /// Show extra columns like duration, video indicator, account, and calendar name.
     #[arg(long)]
@@ -86,16 +91,23 @@ async fn main() -> Result<()> {
     }
 
     let fetched_at = Local::now();
-    let events = calendar::fetch_accounts(calendar::FetchOptions {
-        account_filters: &account_filters,
-        fetch_days: cli.fetch_days.max(1),
-        max_results_per_calendar: cli
-            .max_results_per_calendar
-            .clamp(1, calendar::GOOGLE_EVENTS_MAX_RESULTS_PER_PAGE),
-        all_calendars: cli.all_calendars,
-    })
-    .await
-    .context("calendar fetch failed")?;
+    let fetch_days = cli.fetch_days.max(1);
+    let events = if cli.ics.is_empty() {
+        calendar::fetch_accounts(calendar::FetchOptions {
+            account_filters: &account_filters,
+            fetch_days,
+            max_results_per_calendar: cli
+                .max_results_per_calendar
+                .clamp(1, calendar::GOOGLE_EVENTS_MAX_RESULTS_PER_PAGE),
+            all_calendars: cli.all_calendars,
+        })
+        .await
+        .context("calendar fetch failed")?
+    } else {
+        ics::fetch_sources(&cli.ics, fetch_days)
+            .await
+            .context("ICS fetch failed")?
+    };
 
     let mut events = calendar::dedupe_events(events);
     events.retain(|event| !event.is_past(fetched_at));
@@ -206,5 +218,51 @@ mod tests {
 
         assert!(line.contains("\u{1b}[38;2;245;194;129m"));
         assert!(line.contains("\u{1b}[1;38;2;245;194;129mSome holiday\u{1b}[0m"));
+    }
+
+    #[test]
+    fn cli_rejects_ics_with_goa_specific_options() {
+        assert!(
+            Cli::try_parse_from([
+                "app",
+                "--ics",
+                "https://example.invalid/a.ics",
+                "--list-accounts"
+            ])
+            .is_err()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "app",
+                "--ics",
+                "https://example.invalid/a.ics",
+                "--account",
+                "work"
+            ])
+            .is_err()
+        );
+        assert!(
+            Cli::try_parse_from([
+                "app",
+                "--ics",
+                "https://example.invalid/a.ics",
+                "--all-calendars"
+            ])
+            .is_err()
+        );
+    }
+
+    #[test]
+    fn cli_allows_multiple_ics_sources() {
+        let cli = Cli::try_parse_from([
+            "app",
+            "--ics",
+            "https://example.invalid/a.ics",
+            "--ics",
+            "https://example.invalid/b.ics",
+        ])
+        .expect("valid ICS CLI");
+
+        assert_eq!(cli.ics.len(), 2);
     }
 }

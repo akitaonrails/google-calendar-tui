@@ -120,7 +120,50 @@ pub struct CalendarEvent {
     status: Option<String>,
 }
 
+pub(crate) struct ImportedEvent<'a> {
+    pub title: &'a str,
+    pub start: DateTime<Local>,
+    pub end: Option<DateTime<Local>>,
+    pub all_day: bool,
+    pub calendar_name: &'a str,
+    pub account: &'a str,
+    pub location: Option<&'a str>,
+    pub calendar_id: &'a str,
+    pub ical_uid: Option<&'a str>,
+    pub status: Option<&'a str>,
+}
+
 impl CalendarEvent {
+    pub(crate) fn new_imported(input: ImportedEvent<'_>) -> Self {
+        let title = sanitize_imported_title(input.title);
+        let location = input
+            .location
+            .map(sanitize_display_text)
+            .filter(|location| !location.is_empty());
+
+        Self {
+            title,
+            start: input.start,
+            end: input.end,
+            all_day: input.all_day,
+            calendar_name: sanitize_display_text(input.calendar_name),
+            account: sanitize_display_text(input.account),
+            location,
+            has_meet: false,
+            primary_calendar: false,
+            calendar_id: sanitize_display_text(input.calendar_id),
+            event_type: Some("imported".to_string()),
+            ical_uid: input
+                .ical_uid
+                .map(sanitize_display_text)
+                .filter(|uid| !uid.is_empty()),
+            status: input
+                .status
+                .map(sanitize_display_text)
+                .filter(|status| !status.is_empty()),
+        }
+    }
+
     pub fn is_past(&self, now: DateTime<Local>) -> bool {
         self.end.unwrap_or(self.start) < now
     }
@@ -1029,6 +1072,15 @@ fn collapse_whitespace(value: &str) -> String {
 
 pub(crate) fn sanitize_display_text(value: &str) -> String {
     collapse_whitespace(&strip_terminal_controls(value))
+}
+
+pub(crate) fn sanitize_imported_title(value: &str) -> String {
+    let title = sanitize_display_text(value);
+    if title.is_empty() {
+        "(untitled)".to_string()
+    } else {
+        title
+    }
 }
 
 fn strip_terminal_controls(value: &str) -> String {

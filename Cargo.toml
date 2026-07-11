@@ -17,8 +17,10 @@ pkg-fmt = "tgz"
 [dependencies]
 anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
+chrono-tz = "0.10"
 clap = { version = "4", features = ["derive"] }
 crossterm = "0.29"
+icalendar = { version = "0.17", default-features = false, features = ["parser", "recurrence"] }
 ratatui = { version = "0.30.1", default-features = false, features = ["crossterm", "layout-cache"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }

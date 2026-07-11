@@ -12,6 +12,7 @@ It fetches upcoming appointments once, prints them to stdout, and exits. It does
 - No app-specific OAuth client setup or token cache.
 - Read-only Google Calendar API access.
 - One or more GOA Google accounts.
+- Optional read-only private iCal/ICS sources for headless or non-GNOME environments.
 - Colored plain stdout output by default for quick shell use; disable ANSI colors with `--no-color`.
 - Optional responsive Ratatui UI with screen-fitting `more` behavior.
 - Minimal default rows: day, time, and appointment title only.
@@ -105,6 +106,22 @@ Use the interactive TUI with screen-fitting `more` behavior:
 cargo run -- --tui
 ```
 
+## Headless / WSL / non-GNOME calendars
+
+GOA remains the default. For environments without GNOME Online Accounts, pass one or more private iCal/ICS URLs explicitly:
+
+```sh
+cargo run -- --ics 'https://calendar.google.com/calendar/ical/.../basic.ics'
+cargo run -- --ics 'https://calendar.google.com/calendar/ical/.../basic.ics' --ics 'https://example.com/other.ics'
+cargo run -- --ics 'https://calendar.google.com/calendar/ical/.../basic.ics' --tui
+```
+
+Use Google Calendar's **Secret address in iCal format** for each calendar you want to include. Each URL grants bearer read access to that calendar: do not share it, and remember that passing it on the command line may store it in shell history or expose it briefly in process listings. If it leaks, reset the secret address in Google Calendar settings.
+
+When `--ics` is present, the app skips GOA completely. `--ics` cannot be combined with GOA-only options such as `--list-accounts`, `--account`, or `--all-calendars`.
+
+ICS parsing supports timed events, all-day events, and bounded RRULE/RDATE/EXDATE recurrence expansion. Floating datetimes are interpreted in the local timezone; custom non-IANA `VTIMEZONE` definitions and modified recurring instances may not preserve every Google Calendar API detail.
+
 ## TUI commands
 
 Inside `--tui` mode:
@@ -140,6 +157,7 @@ google-calendar-tui [OPTIONS]
 | `-a, --account <ACCOUNT>` | Filter GOA accounts by exact id, email, display name, or object path. If there is no exact match, a case-insensitive substring match is used. Repeat the flag or comma-separate values, for example `--account personal@example.com --account work@example.com` or `--account personal,work`. |
 | `--list-accounts` | List usable Google Calendar accounts known to GNOME Online Accounts and exit without fetching events. Respects `--account` filters. |
 | `--all-calendars` | Include calendars that are hidden or unselected in Google Calendar. Without this flag, only primary and selected calendars are read. Free/busy-only calendars are still skipped. |
+| `--ics <URL>` | Fetch events from a private iCal/ICS URL instead of GOA. Repeat for multiple calendars. Conflicts with `--list-accounts`, `--account`, and `--all-calendars`. Treat URLs as secrets. |
 | `--details` | Show extra columns after the title: duration, `Meet` when a video link is detected, GOA account, calendar name, and location when present. |
 | `--tui` | Use the interactive Ratatui screen-fitting view instead of plain stdout. In TUI mode, `m`, Space, or Down reveals more hidden appointments; `0` or Home returns to the top; `q` or Esc quits. |
 | `--no-color` | Disable ANSI colors in plain stdout mode. The `NO_COLOR` environment variable also disables stdout colors. TUI colors are controlled by the terminal UI renderer. |
@@ -153,3 +171,5 @@ google-calendar-tui [OPTIONS]
 GOA returns short-lived access tokens over D-Bus. The app does not persist Google tokens. If GOA says the account needs attention, fix it in GNOME Settings and run the app again.
 
 By default, only your primary and selected Google calendars are read. Use `--all-calendars` only when you also want calendars hidden/unselected in Google Calendar.
+
+Private ICS mode is also read-only and fetches once, but it cannot list calendars or infer Google account metadata. Multiple calendars require multiple `--ics` flags.
