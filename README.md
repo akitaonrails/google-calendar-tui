@@ -13,7 +13,7 @@ It fetches upcoming appointments once, prints them to stdout, and exits. It does
 - Read-only Google Calendar API access.
 - One or more GOA Google accounts.
 - Optional read-only private iCal/ICS sources for headless or non-GNOME environments.
-- Colored plain stdout output by default for quick shell use; choose `default`, `evangelion`, or `nerv` with `--theme`, and disable stdout ANSI colors with `--no-color`.
+- Colored plain stdout output by default for quick shell use; choose `default`, `evangelion`, or `nerv` with `--theme` or `TCLOCK_WIDGET_THEME`, and disable stdout ANSI colors with `--no-color`.
 - Optional responsive Ratatui UI with screen-fitting `more` behavior.
 - Minimal default rows: day, time, and appointment title only.
 - Subtle category color markers in TUI mode for holidays, birthdays, travel, focus time, out-of-office, meetings, and all-day events.
@@ -142,6 +142,8 @@ Available themes:
 
 `--no-color` and the `NO_COLOR` environment variable disable ANSI colors only in plain stdout mode. TUI colors still use the selected theme.
 
+When used as a `clock-tui` widget, `google-calendar-tui` also honors `TCLOCK_WIDGET_THEME`; explicit `--theme` wins over the environment variable, and unknown environment values fall back to `default`.
+
 Default category mapping:
 
 - amber: holidays
@@ -170,7 +172,7 @@ google-calendar-tui [OPTIONS]
 | `--ics <URL>` | Fetch events from a private iCal/ICS URL instead of GOA. Repeat for multiple calendars. Conflicts with `--list-accounts`, `--account`, and `--all-calendars`. Treat URLs as secrets. |
 | `--details` | Show extra columns after the title: duration, `Meet` when a video link is detected, GOA account, calendar name, and location when present. |
 | `--tui` | Use the interactive Ratatui screen-fitting view instead of plain stdout. In TUI mode, `m`, Space, or Down reveals more hidden appointments; `0` or Home returns to the top; `q` or Esc quits. |
-| `--theme <THEME>` | Color theme for stdout ANSI and TUI rendering. Allowed values: `default`, `evangelion`, `nerv`. Default: `default`. |
+| `--theme <THEME>` | Color theme for stdout ANSI and TUI rendering. Allowed values: `default`, `evangelion`, `nerv`. Defaults to `TCLOCK_WIDGET_THEME` when it is one of those names, then `default`. |
 | `--no-color` | Disable ANSI colors in plain stdout mode. The `NO_COLOR` environment variable also disables stdout colors. TUI colors still use `--theme`. |
 | `--fetch-days <DAYS>` | Number of future days to fetch once at startup. Default: `60`. Values below `1` are clamped to `1`. |
 | `--max-results-per-calendar <N>` | Maximum events requested per calendar page. Default: `2500`. Values are clamped to Google Calendar's API range of `1..=2500`. |

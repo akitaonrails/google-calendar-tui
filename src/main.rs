@@ -14,6 +14,7 @@ use display::{
 
 /// Default lookahead chosen to keep startup fast while still covering near-term planning.
 const DEFAULT_FETCH_DAYS: i64 = 60;
+const WIDGET_THEME_ENV: &str = "TCLOCK_WIDGET_THEME";
 
 #[derive(Debug, Parser)]
 #[command(
@@ -50,9 +51,9 @@ struct Cli {
     #[arg(long)]
     no_color: bool,
 
-    /// Color theme for stdout ANSI and TUI rendering.
-    #[arg(long, value_enum, default_value_t = Theme::Default, value_name = "THEME")]
-    theme: Theme,
+    /// Color theme for stdout ANSI and TUI rendering. Falls back to TCLOCK_WIDGET_THEME, then default.
+    #[arg(long, value_enum, value_name = "THEME")]
+    theme: Option<Theme>,
 
     /// Number of future days to fetch once at startup.
     #[arg(long, default_value_t = DEFAULT_FETCH_DAYS, value_name = "DAYS")]
@@ -115,18 +116,29 @@ async fn main() -> Result<()> {
 
     let mut events = calendar::dedupe_events(events);
     events.retain(|event| !event.is_past(fetched_at));
+    let theme = resolve_theme(cli.theme);
 
     if cli.tui {
-        ui::run(events, cli.details, cli.theme.palette())
+        ui::run(events, cli.details, theme.palette())
     } else {
         print_events(
             &events,
             cli.details,
             stdout_colors_enabled(cli.no_color),
-            cli.theme.palette(),
+            theme.palette(),
         );
         Ok(())
     }
+}
+
+fn resolve_theme(cli_theme: Option<Theme>) -> Theme {
+    cli_theme
+        .or_else(|| {
+            std::env::var(WIDGET_THEME_ENV)
+                .ok()
+                .and_then(|theme| Theme::parse_name(&theme))
+        })
+        .unwrap_or(Theme::Default)
 }
 
 fn print_events(
@@ -208,6 +220,9 @@ fn details(event: &CalendarEvent) -> String {
 mod tests {
     use super::*;
     use chrono::{DateTime, Local, LocalResult, TimeZone};
+    use std::sync::Mutex;
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn local_datetime(year: i32, month: u32, day: u32, hour: u32, minute: u32) -> DateTime<Local> {
         match Local.with_ymd_and_hms(year, month, day, hour, minute, 0) {
@@ -255,14 +270,40 @@ mod tests {
     #[test]
     fn cli_parses_theme_names_and_defaults_to_default() {
         let default_cli = Cli::try_parse_from(["app"]).expect("default CLI");
-        assert_eq!(default_cli.theme, Theme::Default);
+        assert_eq!(default_cli.theme, None);
+        assert_eq!(resolve_theme(default_cli.theme), Theme::Default);
 
         let evangelion = Cli::try_parse_from(["app", "--theme", "evangelion"]).expect("theme CLI");
-        assert_eq!(evangelion.theme, Theme::Evangelion);
+        assert_eq!(evangelion.theme, Some(Theme::Evangelion));
 
         let nerv = Cli::try_parse_from(["app", "--theme", "nerv"]).expect("theme CLI");
-        assert_eq!(nerv.theme, Theme::Nerv);
+        assert_eq!(nerv.theme, Some(Theme::Nerv));
         assert!(Cli::try_parse_from(["app", "--theme", "unknown"]).is_err());
+    }
+
+    #[test]
+    fn theme_falls_back_to_tclock_widget_theme_env() {
+        let _guard = ENV_LOCK.lock().expect("env lock");
+        let previous = std::env::var_os(WIDGET_THEME_ENV);
+
+        unsafe {
+            std::env::set_var(WIDGET_THEME_ENV, "nerv");
+        }
+        assert_eq!(resolve_theme(None), Theme::Nerv);
+        assert_eq!(resolve_theme(Some(Theme::Evangelion)), Theme::Evangelion);
+
+        unsafe {
+            std::env::set_var(WIDGET_THEME_ENV, "unknown-clock-theme");
+        }
+        assert_eq!(resolve_theme(None), Theme::Default);
+
+        unsafe {
+            if let Some(previous) = previous {
+                std::env::set_var(WIDGET_THEME_ENV, previous);
+            } else {
+                std::env::remove_var(WIDGET_THEME_ENV);
+            }
+        }
     }
 
     #[test]

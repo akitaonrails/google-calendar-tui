@@ -53,6 +53,15 @@ impl Theme {
             Self::Nerv => Palette::NERV,
         }
     }
+
+    pub fn parse_name(value: &str) -> Option<Self> {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "default" => Some(Self::Default),
+            "evangelion" => Some(Self::Evangelion),
+            "nerv" => Some(Self::Nerv),
+            _ => None,
+        }
+    }
 }
 
 impl std::fmt::Display for Theme {
